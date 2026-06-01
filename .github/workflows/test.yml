@@ -1,0 +1,104 @@
+# .github/workflows/test.yml
+# End-to-end test workflow for local testing via 'act' or private repository.
+# Tests various scenarios before publishing to the Marketplace.
+
+name: Test MS Teams Action
+
+on:
+    workflow_dispatch:
+        inputs:
+            card-type:
+                description: 'Card type to test'
+                required: true
+                default: 'adaptive'
+                type: choice
+                options: [adaptive, message]
+
+jobs:
+    # ── Test 1: Basic notification ──────────────────────────────────────────────
+    test-basic:
+        name: Basic Notification
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Send basic notification
+              uses: ./
+              with:
+                  webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                  title: '🧪 Test — Basic'
+                  message: 'Basic notification test from GitHub Actions.'
+
+    # ── Test 2: With button ──────────────────────────────────────────────────────
+    test-with-button:
+        name: Notification With Button
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Send notification with button
+              uses: ./
+              with:
+                  webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                  title: '🧪 Test — With Button'
+                  message: 'This card has an action button attached.'
+                  button-text: 'Open GitHub'
+                  button-url: 'https://github.com'
+
+    # ── Test 3: Failure scenario ─────────────────────────────────────────────────
+    test-on-failure:
+        name: Failure Notification
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6    # ← checkout을 먼저 추가
+
+            - name: Simulate failure
+              run: exit 1
+
+            - name: Notify on failure
+              if: failure()
+              uses: ./
+              with:
+                  webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                  title: '❌ Test — Failure Scenario'
+                  message: 'This message appears only when the previous step fails.'
+                  color: '#D13438'
+
+    # ── Test 4: Dry-run (no actual send) ─────────────────────────────────────────
+    test-dry-run:
+        name: Dry Run
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Dry-run test
+              uses: ./
+              with:
+                  webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                  title: '🧪 Dry Run Test'
+                  message: 'This should NOT appear in Teams.'
+                  dry-run: 'true'
+
+    # ── Test 5: Security — invalid URL must be rejected ──────────────────────────
+    test-invalid-url:
+        name: Invalid URL Rejection
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Should fail with invalid URL
+              id: invalid
+              continue-on-error: true
+              uses: ./
+              with:
+                  webhook-url: 'https://attacker.example.com/steal'
+                  title: 'Security Test'
+                  message: 'This should never reach Teams.'
+
+            - name: Verify action rejected the URL
+              run: |
+                  if [ "${{ steps.invalid.outcome }}" != "failure" ]; then
+                    echo "::error::Security test failed — invalid URL was not rejected!"
+                    exit 1
+                  fi
+                  echo "✅ Invalid URL correctly rejected."

@@ -1,0 +1,58 @@
+name: 'Microsoft Teams Workflows Webhook Notification'
+description: 'Send notifications to Microsoft Teams via Workflows incoming webhook (new Power Automate method)'
+
+branding:
+    icon: 'bell'
+    color: 'blue'
+
+inputs:
+    webhook-url:
+        description: 'Microsoft Teams Workflows incoming webhook URL. Must be stored in GitHub Secrets.'
+        required: true
+
+    title:
+        description: 'Notification card title'
+        required: false
+        default: 'GitHub Notification'
+
+    message:
+        description: 'Notification message body (plain text or markdown)'
+        required: true
+
+    color:
+        description: 'Accent color as hex code (e.g. #0078D4). Used in message card type only.'
+        required: false
+        default: '#0078D4'
+
+    include-github-context:
+        description: 'Whether to include GitHub context info (repo, ref, actor, workflow, run number)'
+        required: false
+        default: 'true'
+
+    button-text:
+        description: 'Label for the action button (optional). Requires button-url to be set.'
+        required: false
+        default: ''
+
+    button-url:
+        description: 'URL for the action button (optional). Must be a valid HTTPS URL.'
+        required: false
+        default: ''
+
+    card-type:
+        description: 'Card format to send: "adaptive" (recommended) or "message" (legacy fallback)'
+        required: false
+        default: 'adaptive'
+
+    dry-run:
+        description: 'If true, builds the payload and logs it without actually sending to Teams'
+        required: false
+        default: 'false'
+
+outputs:
+    status:
+        description: 'HTTP response status code returned by the Teams webhook endpoint'
+
+runs:
+    using: 'node20'
+    main: 'dist/index.js'

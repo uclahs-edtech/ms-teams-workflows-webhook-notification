@@ -1,0 +1,32 @@
+# ESLint configuration for Node.js / GitHub Actions JavaScript.
+
+env:
+    node: true
+    es2022: true
+    jest: true
+
+parserOptions:
+    ecmaVersion: 2022
+
+plugins:
+    - security
+
+extends:
+    - eslint:recommended
+
+rules:
+    # Code quality
+    no-console: warn
+    no-unused-vars: error
+    no-var: error
+    prefer-const: error
+    eqeqeq: [error, always]
+
+    # Security rules (manually listed instead of plugin:security/recommended)
+    security/detect-object-injection: error
+    security/detect-non-literal-regexp: warn
+    security/detect-possible-timing-attacks: error
+
+    # Style
+    semi: [error, always]
+    quotes: [error, single]

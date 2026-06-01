@@ -1,0 +1,66 @@
+# Triggered when a version tag (e.g. v1.2.3) is pushed.
+# Automatically creates a GitHub Release and moves the major version tag (e.g. v1).
+
+name: Release
+
+on:
+    push:
+        tags:
+            - 'v[0-9]+.[0-9]+.[0-9]+'   # Matches v1.0.0, v2.3.1, etc.
+
+permissions:
+    contents: write   # Required to create releases and push tags
+
+jobs:
+    release:
+        name: Create GitHub Release
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0   # Full history needed to generate changelog diff
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: '20'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci --ignore-scripts
+
+            - name: Run tests before release
+              run: npm test
+
+            - name: Build dist
+              run: npm run build
+
+            - name: Extract version from tag
+              id: version
+              run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+            - name: Extract major version
+              id: major
+              run: echo "MAJOR=$(echo ${GITHUB_REF_NAME} | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v3
+              with:
+                  tag_name: ${{ steps.version.outputs.VERSION }}
+                  name: 'Release ${{ steps.version.outputs.VERSION }}'
+                  body_path: CHANGELOG.md
+                  draft: false
+                  prerelease: ${{ contains(github.ref_name, '-') }}  # e.g. v1.0.0-beta is pre-release
+                  generate_release_notes: true
+
+            # Move the floating major tag (v1, v2, ...) to the latest patch release.
+            # This allows users pinned to @v1 to automatically receive patch updates.
+            - name: Update floating major version tag
+              run: |
+                  MAJOR=${{ steps.major.outputs.MAJOR }}
+                  git config user.name  "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag -fa "${MAJOR}" -m "chore: update ${MAJOR} tag to ${{ steps.version.outputs.VERSION }}"
+                  git push origin "${MAJOR}" --force
