@@ -1,4 +1,4 @@
-name: 'Microsoft Teams Workflows Webhook Notification'
+name: 'MS Teams Workflows Webhook Notification'
 description: 'Send notifications to Microsoft Teams via Workflows incoming webhook (new Power Automate method)'
 
 branding:
@@ -18,6 +18,11 @@ inputs:
     message:
         description: 'Notification message body (plain text or markdown)'
         required: true
+
+    payload:
+        description: 'Optional detail payload to include in the notification card. JSON strings are pretty-printed.'
+        required: false
+        default: ''
 
     color:
         description: 'Accent color as hex code (e.g. #0078D4). Used in message card type only.'

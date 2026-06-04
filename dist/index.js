@@ -44511,6 +44511,7 @@ const { URL } = __nccwpck_require__(7016);
 const MAX_TITLE_LENGTH   = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_BUTTON_LENGTH  = 100;
+const MAX_PAYLOAD_LENGTH = 6000;
 const MAX_RESPONSE_BODY_LENGTH = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -44654,6 +44655,45 @@ function validateColor(value) {
 	return DEFAULT_COLOR;
 }
 
+/**
+ * Formats an optional detail payload for display in the notification card.
+ * JSON values are pretty-printed; non-JSON values are displayed as text.
+ *
+ * @param {string} rawPayload - Raw payload string from action input.
+ * @returns {string} Formatted payload text, or empty string if blank.
+ */
+function formatDetailPayload(rawPayload) {
+	if (typeof rawPayload !== 'string') {
+		throw new Error('Input "payload" must be a string.');
+	}
+
+	const cleaned = Array.from(rawPayload)
+		.filter((char) => {
+			const code = char.charCodeAt(0);
+			return code === 9 || code === 10 || code === 13 || (code > 31 && code !== 127);
+		})
+		.join('')
+		.trim();
+
+	if (!cleaned) return '';
+
+	let formatted = cleaned;
+	try {
+		formatted = JSON.stringify(JSON.parse(cleaned), null, 2);
+	} catch {
+		// Keep non-JSON payloads as plain text.
+	}
+
+	if (formatted.length > MAX_PAYLOAD_LENGTH) {
+		core.warning(
+			`Input "payload" exceeds ${MAX_PAYLOAD_LENGTH} characters and will be truncated.`
+		);
+		return formatted.slice(0, MAX_PAYLOAD_LENGTH);
+	}
+
+	return formatted;
+}
+
 // ─── Payload Builders ─────────────────────────────────────────────────────────
 
 /**
@@ -44691,12 +44731,13 @@ function buildGitHubFacts() {
  * @param {object} params
  * @param {string}  params.title
  * @param {string}  params.message
+ * @param {string}  params.detailPayload
  * @param {boolean} params.includeContext
  * @param {string}  params.buttonText
  * @param {string}  params.buttonUrl
  * @returns {object} Webhook request payload.
  */
-function buildAdaptiveCardPayload({ title, message, includeContext, buttonText, buttonUrl }) {
+function buildAdaptiveCardPayload({ title, message, detailPayload, includeContext, buttonText, buttonUrl }) {
 	const body = [
 		{
 			type:   'TextBlock',
@@ -44713,6 +44754,26 @@ function buildAdaptiveCardPayload({ title, message, includeContext, buttonText, 
 			spacing: 'Medium',
 		},
 	];
+
+	if (detailPayload) {
+		body.push(
+			{
+				type:      'TextBlock',
+				text:      'Details',
+				weight:    'Bolder',
+				spacing:   'Medium',
+				separator: true,
+				wrap:      true,
+			},
+			{
+				type:     'TextBlock',
+				text:     detailPayload,
+				fontType: 'Monospace',
+				wrap:     true,
+				spacing:  'Small',
+			}
+		);
+	}
 
 	if (includeContext) {
 		body.push({
@@ -44765,13 +44826,18 @@ function buildAdaptiveCardPayload({ title, message, includeContext, buttonText, 
  * @param {object} params
  * @param {string}  params.title
  * @param {string}  params.message
+ * @param {string}  params.detailPayload
  * @param {string}  params.color
  * @param {boolean} params.includeContext
  * @param {string}  params.buttonText
  * @param {string}  params.buttonUrl
  * @returns {object} Webhook request payload.
  */
-function buildMessageCardPayload({ title, message, color, includeContext, buttonText, buttonUrl }) {
+function buildMessageCardPayload({ title, message, detailPayload, color, includeContext, buttonText, buttonUrl }) {
+	const activityText = detailPayload
+		? `${message}\n\n**Details**\n\n\`\`\`json\n${detailPayload}\n\`\`\``
+		: message;
+
 	const payload = {
 		'@type':    'MessageCard',
 		'@context': 'http://schema.org/extensions',
@@ -44780,7 +44846,7 @@ function buildMessageCardPayload({ title, message, color, includeContext, button
 		sections: [
 			{
 				activityTitle: title,
-				activityText:  message,
+				activityText,
 				facts:         includeContext ? buildGitHubFacts() : [],
 				markdown:      true,
 			},
@@ -44857,6 +44923,7 @@ async function run() {
 		const rawWebhookUrl = core.getInput('webhook-url', { required: true });
 		const rawTitle      = core.getInput('title');
 		const rawMessage    = core.getInput('message', { required: true });
+		const rawPayload    = core.getInput('payload');
 		const rawColor      = core.getInput('color');
 		const rawButtonText = core.getInput('button-text');
 		const rawButtonUrl  = core.getInput('button-url');
@@ -44873,6 +44940,7 @@ async function run() {
 		// --- Sanitize text inputs ---
 		const title      = sanitizeText(rawTitle,      'title',       MAX_TITLE_LENGTH);
 		const message    = sanitizeText(rawMessage,    'message',     MAX_MESSAGE_LENGTH);
+		const detailPayload = formatDetailPayload(rawPayload);
 		const buttonText = sanitizeText(rawButtonText, 'button-text', MAX_BUTTON_LENGTH);
 		const color      = validateColor(rawColor);
 
@@ -44885,7 +44953,15 @@ async function run() {
 		}
 
 		// --- Build payload ---
-		const params  = { title, message, color, includeContext: includeCtx, buttonText, buttonUrl };
+		const params = {
+			title,
+			message,
+			detailPayload,
+			color,
+			includeContext: includeCtx,
+			buttonText,
+			buttonUrl,
+		};
 		const payload = cardType === 'message'
 			? buildMessageCardPayload(params)
 			: buildAdaptiveCardPayload(params);
@@ -44924,6 +45000,7 @@ module.exports = {
 	sanitizeText,
 	validateButtonUrl,
 	validateColor,
+	formatDetailPayload,
 	buildAdaptiveCardPayload,
 	buildMessageCardPayload,
 	buildGitHubFacts,
@@ -44931,6 +45008,7 @@ module.exports = {
 	run,
 };
 
+/* istanbul ignore next */
 if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
 	run();
 }

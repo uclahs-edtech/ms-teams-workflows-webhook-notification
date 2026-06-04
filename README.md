@@ -16,6 +16,7 @@ deprecated Office 365 Connectors.
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '✅ Deployment Succeeded'
     message: 'Successfully deployed to production.'
+    payload: ${{ toJson(job) }}
     button-text: 'View Run'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 ```
@@ -35,6 +36,7 @@ deprecated Office 365 Connectors.
 | `webhook-url`           | ✅       | —                    | Teams Workflow webhook URL (store in Secrets)      |
 | `title`                 | ❌       | `GitHub Notification`| Card title                                         |
 | `message`               | ✅       | —                    | Notification message body                          |
+| `payload`               | ❌       | —                    | Optional detail payload; JSON is pretty-printed    |
 | `color`                 | ❌       | `#0078D4`            | Accent color (Message Card only)                   |
 | `include-github-context`| ❌       | `true`               | Include repo, ref, actor, workflow facts           |
 | `button-text`           | ❌       | —                    | Action button label                                |
@@ -60,6 +62,7 @@ deprecated Office 365 Connectors.
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '❌ Build Failed'
     message: 'Pipeline failed on `${{ github.ref_name }}`.'
+    payload: ${{ toJson(job) }}
     color: '#D13438'
     button-text: 'View Logs'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

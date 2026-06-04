@@ -26,6 +26,7 @@ const {
 	sanitizeText,
 	validateButtonUrl,
 	validateColor,
+	formatDetailPayload,
 	buildAdaptiveCardPayload,
 	buildMessageCardPayload,
 	postJson,
@@ -193,12 +194,47 @@ describe('validateColor', () => {
 	});
 });
 
+// ─── formatDetailPayload ─────────────────────────────────────────────────────
+
+describe('formatDetailPayload', () => {
+	beforeEach(() => jest.clearAllMocks());
+
+	it('returns empty string for blank input', () => {
+		expect(formatDetailPayload('   ')).toBe('');
+	});
+
+	it('pretty-prints JSON payloads', () => {
+		const result = formatDetailPayload('{"status":"success","steps":[{"name":"build"}]}');
+		expect(result).toContain('"status": "success"');
+		expect(result).toContain('"name": "build"');
+	});
+
+	it('keeps non-JSON payloads as text', () => {
+		expect(formatDetailPayload('plain detail text')).toBe('plain detail text');
+	});
+
+	it('truncates long payloads and emits a warning', () => {
+		const result = formatDetailPayload('a'.repeat(7000));
+		expect(result).toHaveLength(6000);
+		expect(core.warning).toHaveBeenCalledWith(
+			expect.stringContaining('payload')
+		);
+	});
+
+	it('throws when value is not a string', () => {
+		expect(() => formatDetailPayload({ status: 'success' })).toThrow(
+			'Input "payload" must be a string.'
+		);
+	});
+});
+
 // ─── buildAdaptiveCardPayload ─────────────────────────────────────────────────
 
 describe('buildAdaptiveCardPayload', () => {
 	const baseParams = {
 		title:          'Test Title',
 		message:        'Test message',
+		detailPayload:  '',
 		includeContext: false,
 		buttonText:     '',
 		buttonUrl:      '',
@@ -251,6 +287,17 @@ describe('buildAdaptiveCardPayload', () => {
 		const payload = buildAdaptiveCardPayload(baseParams);
 		expect(payload.attachments[0].content.actions).toBeUndefined();
 	});
+
+	it('includes detail payload when provided', () => {
+		const payload = buildAdaptiveCardPayload({
+			...baseParams,
+			detailPayload: '{\n  "status": "success"\n}',
+		});
+		const body = payload.attachments[0].content.body;
+		const detail = body.find((b) => b.fontType === 'Monospace');
+		expect(detail).toBeDefined();
+		expect(detail.text).toContain('"status": "success"');
+	});
 });
 
 // ─── buildMessageCardPayload ──────────────────────────────────────────────────
@@ -259,6 +306,7 @@ describe('buildMessageCardPayload', () => {
 	const baseParams = {
 		title:          'Test Title',
 		message:        'Test message',
+		detailPayload:  '',
 		color:          '#FF0000',
 		includeContext: false,
 		buttonText:     '',
@@ -295,12 +343,22 @@ describe('buildMessageCardPayload', () => {
 		const payload = buildMessageCardPayload({
 			title:          'Test Title',
 			message:        'Test message',
+			detailPayload:  '',
 			color:          '#FF0000',
 			includeContext: true,   // ← 267번 브랜치 커버
 			buttonText:     '',
 			buttonUrl:      '',
 		});
 		expect(payload.sections[0].facts.length).toBeGreaterThan(0);
+	});
+
+	it('includes detail payload in activity text when provided', () => {
+		const payload = buildMessageCardPayload({
+			...baseParams,
+			detailPayload: '{\n  "conclusion": "success"\n}',
+		});
+		expect(payload.sections[0].activityText).toContain('**Details**');
+		expect(payload.sections[0].activityText).toContain('"conclusion": "success"');
 	});
 });
 
@@ -339,7 +397,10 @@ describe('postJson', () => {
 			const mockRes = {
 				statusCode: 200,
 				on: jest.fn((event, handler) => {
-					if (event === 'data') handler('x'.repeat(70 * 1024));
+					if (event === 'data') {
+						handler('x'.repeat(70 * 1024));
+						handler('y');
+					}
 					if (event === 'end')  handler();
 				}),
 			};
@@ -355,6 +416,7 @@ describe('postJson', () => {
 		const parsedUrl = new URL('https://prod-00.westus.logic.azure.com/workflows/abc');
 		const result = await postJson(parsedUrl, {});
 		expect(result.body).toHaveLength(64 * 1024);
+		expect(result.body).not.toContain('y');
 	});
 
 	it('rejects on request error', async () => {
@@ -405,6 +467,7 @@ describe('run', () => {
 		'webhook-url':            'https://prod-00.westus.logic.azure.com/workflows/abc',
 		'title':                  'Test Title',
 		'message':                'Test message',
+		'payload':                '',
 		'color':                  '#0078D4',
 		'include-github-context': 'false',
 		'button-text':            '',
@@ -526,6 +589,38 @@ describe('run', () => {
 		expect(core.setFailed).toHaveBeenCalledWith(
 			expect.not.stringContaining('https://')
 		);
+	});
+
+	it('includes payload input in the sent request body', async () => {
+		let requestBody = '';
+		jest.spyOn(https, 'request').mockImplementation((options, callback) => {
+			const mockRes = {
+				statusCode: 200,
+				on: jest.fn((event, handler) => {
+					if (event === 'data') handler('');
+					if (event === 'end')  handler();
+				}),
+			};
+			callback(mockRes);
+			return {
+				on:      jest.fn().mockReturnThis(),
+				write:   jest.fn((data) => { requestBody = data; }),
+				end:     jest.fn(),
+				destroy: jest.fn(),
+			};
+		});
+
+		core.getInput.mockImplementation((name) => ({
+			...defaultInputs,
+			'payload': '{"status":"success"}',
+		}[name] ?? ''));
+
+		await run();
+
+		const sentPayload = JSON.parse(requestBody);
+		const body = sentPayload.attachments[0].content.body;
+		const detail = body.find((b) => b.fontType === 'Monospace');
+		expect(detail.text).toContain('"status": "success"');
 	});
 });
 
