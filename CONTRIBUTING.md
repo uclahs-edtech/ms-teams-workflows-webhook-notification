@@ -18,7 +18,7 @@ brew install act   # macOS
 ## Setup
 
 ```bash
-git clone https://github.com/sideokyou/microsoft-teams-workflows-webhook-notification.git
+git clone https://github.com/uclahs-edtech/microsoft-teams-workflows-webhook-notification.git
 cd microsoft-teams-workflows-webhook-notification
 npm install
 npm run all   # verify everything works

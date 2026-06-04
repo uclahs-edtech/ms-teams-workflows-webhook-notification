@@ -1,7 +1,7 @@
-# MS Teams Workflow Webhook Notification
+# MS Teams Workflows Webhook Notification
 
-[![CI](https://github.com/sideokyou/microsoft-teams-workflows-webhook-notification/actions/workflows/ci.yml/badge.svg)](https://github.com/sideokyou/microsoft-teams-workflows-webhook-notification/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/sideokyou/microsoft-teams-workflows-webhook-notification/actions/workflows/codeql.yml/badge.svg)](https://github.com/sideokyou/microsoft-teams-workflows-webhook-notification/actions/workflows/codeql.yml)
+[![CI](https://github.com/uclahs-edtech/microsoft-teams-workflows-webhook-notification/actions/workflows/ci.yml/badge.svg)](https://github.com/uclahs-edtech/microsoft-teams-workflows-webhook-notification/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/uclahs-edtech/microsoft-teams-workflows-webhook-notification/actions/workflows/codeql.yml/badge.svg)](https://github.com/uclahs-edtech/microsoft-teams-workflows-webhook-notification/actions/workflows/codeql.yml)
 
 Send notifications from GitHub Actions to Microsoft Teams using the new
 **Power Automate Workflow incoming webhook** — the replacement for the
@@ -11,7 +11,7 @@ deprecated Office 365 Connectors.
 
 ```yaml
 - name: Notify Teams
-  uses: sideokyou/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '✅ Deployment Succeeded'
@@ -55,7 +55,7 @@ deprecated Office 365 Connectors.
 ```yaml
 - name: Notify Teams on failure
   if: failure()
-  uses: sideokyou/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '❌ Build Failed'
@@ -70,7 +70,7 @@ deprecated Office 365 Connectors.
 ```yaml
 - name: Notify Teams
   if: always()
-  uses: sideokyou/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}

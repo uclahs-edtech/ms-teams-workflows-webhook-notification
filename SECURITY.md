@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report security issues by emailing: **sideokyou@gmail.com**
+Please report security issues by emailing: **edtech@mednet.ucla.edu**
 
 Include the following:
 - Description of the vulnerability
