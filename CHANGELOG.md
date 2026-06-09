@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-06-09
+
+### Changed
+- Convert sparse GitHub job payload details into a changelog, status, and timestamp summary.
+- Add `timezone` input for generated notification timestamps.
+
 ## [1.0.0] - 2026-06-01
 
 ### Added

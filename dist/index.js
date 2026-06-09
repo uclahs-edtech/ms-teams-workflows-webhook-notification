@@ -44514,6 +44514,7 @@ const MAX_BUTTON_LENGTH  = 100;
 const MAX_PAYLOAD_LENGTH = 6000;
 const MAX_RESPONSE_BODY_LENGTH = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEZONE = 'America/Los_Angeles';
 
 // Only allow Microsoft-owned domains for the webhook URL (SSRF prevention).
 // Power Automate webhook URLs are always under these domains.
@@ -44692,6 +44693,119 @@ function formatDetailPayload(rawPayload) {
 	}
 
 	return formatted;
+}
+
+function parseJsonObject(value) {
+	try {
+		const parsed = JSON.parse(value);
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? parsed
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+function isSparseJobPayload(payload) {
+	if (!payload || typeof payload.status !== 'string') return false;
+	if (!Object.prototype.hasOwnProperty.call(payload, 'container')) return false;
+
+	return Object.keys(payload).every((key) =>
+		['status', 'container', 'services'].includes(key)
+	);
+}
+
+function formatStatusLine(status) {
+	const normalized = status.trim().toLowerCase();
+
+	switch (normalized) {
+		case 'success':
+			return 'Success!';
+		case 'failure':
+		case 'failed':
+			return 'Failed!';
+		case 'cancelled':
+		case 'canceled':
+			return 'Cancelled!';
+		case 'skipped':
+			return 'Skipped!';
+		default:
+			return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}!`;
+	}
+}
+
+function formatTimestamp(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+	try {
+		const parts = new Intl.DateTimeFormat('en-US', {
+			timeZone,
+			year:      'numeric',
+			month:     '2-digit',
+			day:       '2-digit',
+			hour:      '2-digit',
+			minute:    '2-digit',
+			second:    '2-digit',
+			hour12:    false,
+			hourCycle: 'h23',
+		}).formatToParts(date);
+
+		const value = (type) => parts.find((part) => part.type === type)?.value;
+		return `${value('month')}/${value('day')}/${value('year')} ${value('hour')}:${value('minute')}:${value('second')}`;
+	} catch {
+		core.warning(`Invalid timezone "${timeZone}". Falling back to ${DEFAULT_TIMEZONE}.`);
+		return formatTimestamp(date, DEFAULT_TIMEZONE);
+	}
+}
+
+function buildChangelogLines() {
+	const eventPayload = github.context.payload || {};
+	const commits = Array.isArray(eventPayload.commits) ? eventPayload.commits : [];
+	const messages = commits
+		.map((commit) => String(commit?.message || '').split(/\r?\n/)[0].trim())
+		.filter(Boolean);
+
+	if (messages.length > 0) {
+		return messages.slice(0, 20);
+	}
+
+	const fallbackMessage =
+		eventPayload.head_commit?.message ||
+		eventPayload.pull_request?.title ||
+		eventPayload.release?.name ||
+		eventPayload.release?.tag_name ||
+		'';
+
+	return fallbackMessage
+		? [String(fallbackMessage).split(/\r?\n/)[0].trim()].filter(Boolean)
+		: [];
+}
+
+function buildGeneratedDetailPayload(rawPayload, timeZone) {
+	const formattedPayload = formatDetailPayload(rawPayload);
+	const parsedPayload = parseJsonObject(formattedPayload);
+
+	if (!isSparseJobPayload(parsedPayload)) {
+		return formattedPayload;
+	}
+
+	const lines = [];
+	const changelogLines = buildChangelogLines();
+
+	if (changelogLines.length > 0) {
+		lines.push('Changelog:', ...changelogLines);
+	}
+
+	lines.push(formatStatusLine(parsedPayload.status));
+	lines.push(formatTimestamp(new Date(), timeZone));
+
+	const generated = lines.join('\n');
+	if (generated.length > MAX_PAYLOAD_LENGTH) {
+		core.warning(
+			`Generated payload exceeds ${MAX_PAYLOAD_LENGTH} characters and will be truncated.`
+		);
+		return generated.slice(0, MAX_PAYLOAD_LENGTH);
+	}
+
+	return generated;
 }
 
 // ─── Payload Builders ─────────────────────────────────────────────────────────
@@ -44930,6 +45044,7 @@ async function run() {
 		const cardType      = core.getInput('card-type').toLowerCase().trim();
 		const includeCtx    = core.getInput('include-github-context').trim() === 'true';
 		const dryRun        = core.getInput('dry-run').trim() === 'true';
+		const timezone      = core.getInput('timezone').trim() || DEFAULT_TIMEZONE;
 
 		// --- Register webhook URL as a secret so it never appears in logs ---
 		core.setSecret(rawWebhookUrl);
@@ -44940,7 +45055,7 @@ async function run() {
 		// --- Sanitize text inputs ---
 		const title      = sanitizeText(rawTitle,      'title',       MAX_TITLE_LENGTH);
 		const message    = sanitizeText(rawMessage,    'message',     MAX_MESSAGE_LENGTH);
-		const detailPayload = formatDetailPayload(rawPayload);
+		const detailPayload = buildGeneratedDetailPayload(rawPayload, timezone);
 		const buttonText = sanitizeText(rawButtonText, 'button-text', MAX_BUTTON_LENGTH);
 		const color      = validateColor(rawColor);
 
@@ -45001,6 +45116,10 @@ module.exports = {
 	validateButtonUrl,
 	validateColor,
 	formatDetailPayload,
+	buildGeneratedDetailPayload,
+	buildChangelogLines,
+	formatStatusLine,
+	formatTimestamp,
 	buildAdaptiveCardPayload,
 	buildMessageCardPayload,
 	buildGitHubFacts,

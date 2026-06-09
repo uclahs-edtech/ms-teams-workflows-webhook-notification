@@ -17,6 +17,7 @@ deprecated Office 365 Connectors.
     title: '✅ Deployment Succeeded'
     message: 'Successfully deployed to production.'
     payload: ${{ toJson(job) }}
+    timezone: 'America/Los_Angeles'
     button-text: 'View Run'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 ```
@@ -36,12 +37,13 @@ deprecated Office 365 Connectors.
 | `webhook-url`           | ✅       | —                    | Teams Workflow webhook URL (store in Secrets)      |
 | `title`                 | ❌       | `GitHub Notification`| Card title                                         |
 | `message`               | ✅       | —                    | Notification message body                          |
-| `payload`               | ❌       | —                    | Optional detail payload; JSON is pretty-printed    |
+| `payload`               | ❌       | —                    | Optional detail payload; JSON is pretty-printed. GitHub job payloads are converted to changelog/status/timestamp details. |
 | `color`                 | ❌       | `#0078D4`            | Accent color (Message Card only)                   |
 | `include-github-context`| ❌       | `true`               | Include repo, ref, actor, workflow facts           |
 | `button-text`           | ❌       | —                    | Action button label                                |
 | `button-url`            | ❌       | —                    | Action button URL (HTTPS only)                     |
 | `card-type`             | ❌       | `adaptive`           | `adaptive` (recommended) or `message` (legacy)     |
+| `timezone`              | ❌       | `America/Los_Angeles`| Timezone used for generated timestamps             |
 | `dry-run`               | ❌       | `false`              | Build payload without sending                      |
 
 ## Outputs
@@ -63,9 +65,24 @@ deprecated Office 365 Connectors.
     title: '❌ Build Failed'
     message: 'Pipeline failed on `${{ github.ref_name }}`.'
     payload: ${{ toJson(job) }}
+    timezone: 'America/Los_Angeles'
     color: '#D13438'
     button-text: 'View Logs'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+```
+
+When `payload: ${{ toJson(job) }}` is used, the Details section is generated in
+this format instead of showing the sparse GitHub job JSON:
+
+```text
+Changelog:
+SPMS-169 fixed the educator filter in timeslots page
+Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator
+SPMS-169 fixed the educator filter in timeslots page
+Merge pull request #57 from ets/staging
+Release 2.3 SPMS-169 fix
+Success!
+05/28/2026 17:19:15
 ```
 
 ### Always notify with status

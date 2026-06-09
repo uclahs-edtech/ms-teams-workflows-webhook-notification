@@ -18,6 +18,7 @@ jest.mock('@actions/github', () => ({
 }));
 
 const core  = require('@actions/core');
+const github = require('@actions/github');
 const https = require('https');
 const { URL } = require('url');
 
@@ -27,6 +28,10 @@ const {
 	validateButtonUrl,
 	validateColor,
 	formatDetailPayload,
+	buildGeneratedDetailPayload,
+	buildChangelogLines,
+	formatStatusLine,
+	formatTimestamp,
 	buildAdaptiveCardPayload,
 	buildMessageCardPayload,
 	postJson,
@@ -225,6 +230,164 @@ describe('formatDetailPayload', () => {
 		expect(() => formatDetailPayload({ status: 'success' })).toThrow(
 			'Input "payload" must be a string.'
 		);
+	});
+});
+
+// ─── generated detail payload ────────────────────────────────────────────────
+
+describe('generated detail payload', () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+		github.context.payload = {
+			commits: [
+				{ message: 'SPMS-169 fixed the educator filter in timeslots page\n\nBody' },
+				{
+					message:
+						'Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator',
+				},
+			],
+		};
+		jest.useFakeTimers().setSystemTime(new Date('2026-05-29T00:19:15Z'));
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+		github.context.payload = undefined;
+	});
+
+	it('formats known statuses for generated details', () => {
+		expect(formatStatusLine('success')).toBe('Success!');
+		expect(formatStatusLine('failure')).toBe('Failed!');
+		expect(formatStatusLine('cancelled')).toBe('Cancelled!');
+		expect(formatStatusLine('skipped')).toBe('Skipped!');
+		expect(formatStatusLine('timed_out')).toBe('Timed_out!');
+	});
+
+	it('formats timestamps in the requested timezone', () => {
+		expect(formatTimestamp(new Date('2026-05-29T00:19:15Z'))).toBe(
+			'05/28/2026 17:19:15'
+		);
+	});
+
+	it('formats timestamps with default arguments', () => {
+		expect(formatTimestamp()).toBe('05/28/2026 17:19:15');
+	});
+
+	it('falls back to the default timezone when timezone is invalid', () => {
+		const result = formatTimestamp(new Date('2026-05-29T00:19:15Z'), 'Invalid/Timezone');
+		expect(result).toBe('05/28/2026 17:19:15');
+		expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Invalid timezone'));
+	});
+
+	it('converts sparse GitHub job payloads to changelog details', () => {
+		const result = buildGeneratedDetailPayload(
+			'{"status":"success","container":{}}',
+			'America/Los_Angeles'
+		);
+
+		expect(result).toContain('Changelog:');
+		expect(result).toContain('SPMS-169 fixed the educator filter in timeslots page');
+		expect(result).toContain(
+			'Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator'
+		);
+		expect(result).toContain('Success!');
+		expect(result).toContain('05/28/2026 17:19:15');
+		expect(result).not.toContain('"container"');
+	});
+
+	it('uses fallback event titles when commits are unavailable', () => {
+		github.context.payload = {
+			head_commit: {
+				message: 'Release 2.3 SPMS-169 fix\n\nFull release notes',
+			},
+		};
+
+		expect(buildChangelogLines()).toEqual(['Release 2.3 SPMS-169 fix']);
+	});
+
+	it('returns no changelog lines when no event messages are available', () => {
+		github.context.payload = {};
+		expect(buildChangelogLines()).toEqual([]);
+	});
+
+	it('returns no changelog lines when event payload is missing', () => {
+		github.context.payload = undefined;
+		expect(buildChangelogLines()).toEqual([]);
+	});
+
+	it('ignores commits without messages', () => {
+		github.context.payload = {
+			commits: [null, {}, { message: '' }],
+		};
+
+		expect(buildChangelogLines()).toEqual([]);
+	});
+
+	it('uses pull request titles when commit and head commit messages are unavailable', () => {
+		github.context.payload = {
+			pull_request: {
+				title: 'Merge pull request #57 from ets/staging',
+			},
+		};
+
+		expect(buildChangelogLines()).toEqual(['Merge pull request #57 from ets/staging']);
+	});
+
+	it('uses release names and tags as changelog fallbacks', () => {
+		github.context.payload = {
+			release: {
+				name: 'Release 2.3 SPMS-169 fix',
+				tag_name: 'v2.3.0',
+			},
+		};
+		expect(buildChangelogLines()).toEqual(['Release 2.3 SPMS-169 fix']);
+
+		github.context.payload = {
+			release: {
+				tag_name: 'v2.3.0',
+			},
+		};
+		expect(buildChangelogLines()).toEqual(['v2.3.0']);
+	});
+
+	it('builds generated job details without a changelog section when no messages exist', () => {
+		github.context.payload = {};
+		const result = buildGeneratedDetailPayload(
+			'{"status":"success","container":{}}',
+			'America/Los_Angeles'
+		);
+
+		expect(result).toBe('Success!\n05/28/2026 17:19:15');
+	});
+
+	it('truncates generated job details and emits a warning', () => {
+		github.context.payload = {
+			commits: Array.from({ length: 20 }, (_, index) => ({
+				message: `${index} ${'a'.repeat(400)}`,
+			})),
+		};
+
+		const result = buildGeneratedDetailPayload(
+			'{"status":"success","container":{}}',
+			'America/Los_Angeles'
+		);
+
+		expect(result).toHaveLength(6000);
+		expect(core.warning).toHaveBeenCalledWith(
+			expect.stringContaining('Generated payload exceeds')
+		);
+	});
+
+	it('keeps non-job payloads as formatted payload text', () => {
+		const result = buildGeneratedDetailPayload('{"status":"success"}', 'America/Los_Angeles');
+		expect(result).toContain('"status": "success"');
+		expect(result).not.toContain('Changelog:');
+	});
+
+	it('keeps array payloads as formatted payload text', () => {
+		const result = buildGeneratedDetailPayload('[{"status":"success"}]', 'America/Los_Angeles');
+		expect(result).toContain('"status": "success"');
+		expect(result).not.toContain('Success!');
 	});
 });
 
@@ -473,6 +636,7 @@ describe('run', () => {
 		'button-text':            '',
 		'button-url':             '',
 		'card-type':              'adaptive',
+		'timezone':               'America/Los_Angeles',
 		'dry-run':                'false',
 	};
 
@@ -621,6 +785,42 @@ describe('run', () => {
 		const body = sentPayload.attachments[0].content.body;
 		const detail = body.find((b) => b.fontType === 'Monospace');
 		expect(detail.text).toContain('"status": "success"');
+	});
+
+	it('uses the default timezone when timezone input is blank', async () => {
+		let requestBody = '';
+		jest.spyOn(https, 'request').mockImplementation((options, callback) => {
+			const mockRes = {
+				statusCode: 200,
+				on: jest.fn((event, handler) => {
+					if (event === 'data') handler('');
+					if (event === 'end')  handler();
+				}),
+			};
+			callback(mockRes);
+			return {
+				on:      jest.fn().mockReturnThis(),
+				write:   jest.fn((data) => { requestBody = data; }),
+				end:     jest.fn(),
+				destroy: jest.fn(),
+			};
+		});
+
+		jest.useFakeTimers().setSystemTime(new Date('2026-05-29T00:19:15Z'));
+		github.context.payload = {};
+		core.getInput.mockImplementation((name) => ({
+			...defaultInputs,
+			'payload':  '{"status":"success","container":{}}',
+			'timezone': '',
+		}[name] ?? ''));
+
+		await run();
+
+		const sentPayload = JSON.parse(requestBody);
+		const body = sentPayload.attachments[0].content.body;
+		const detail = body.find((b) => b.fontType === 'Monospace');
+		expect(detail.text).toContain('05/28/2026 17:19:15');
+		jest.useRealTimers();
 	});
 });
 

@@ -49,6 +49,11 @@ inputs:
         required: false
         default: 'adaptive'
 
+    timezone:
+        description: 'Timezone used when generating the notification timestamp'
+        required: false
+        default: 'America/Los_Angeles'
+
     dry-run:
         description: 'If true, builds the payload and logs it without actually sending to Teams'
         required: false

@@ -1,6 +1,6 @@
 {
   "name": "microsoft-teams-workflows-webhook-notification",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitHub Action to send notifications to MS Teams via Workflow incoming webhook",
   "main": "dist/index.js",
   "scripts": {
