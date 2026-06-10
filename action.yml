@@ -24,10 +24,10 @@ inputs:
         required: false
         default: ''
 
-    color:
-        description: 'Accent color as hex code (e.g. #0078D4). Used in message card type only.'
+    type:
+        description: 'Notification type. Controls status label and card color. One of: info, warning, fail, success.'
         required: false
-        default: '#0078D4'
+        default: 'info'
 
     include-github-context:
         description: 'Whether to include GitHub context info (repo, ref, actor, workflow, run number)'

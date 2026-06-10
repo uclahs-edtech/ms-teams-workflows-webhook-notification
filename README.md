@@ -11,12 +11,13 @@ deprecated Office 365 Connectors.
 
 ```yaml
 - name: Notify Teams
-  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1.0.2
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '✅ Deployment Succeeded'
     message: 'Successfully deployed to production.'
     payload: ${{ toJson(job) }}
+    type: 'success'
     timezone: 'America/Los_Angeles'
     button-text: 'View Run'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -38,7 +39,7 @@ deprecated Office 365 Connectors.
 | `title`                 | ❌       | `GitHub Notification`| Card title                                         |
 | `message`               | ✅       | —                    | Notification message body                          |
 | `payload`               | ❌       | —                    | Optional detail payload; JSON is pretty-printed. GitHub job payloads are converted to changelog/status/timestamp details. |
-| `color`                 | ❌       | `#0078D4`            | Accent color (Message Card only)                   |
+| `type`                  | ❌       | `info`               | Notification type: `info`, `warning`, `fail`, or `success` |
 | `include-github-context`| ❌       | `true`               | Include repo, ref, actor, workflow facts           |
 | `button-text`           | ❌       | —                    | Action button label                                |
 | `button-url`            | ❌       | —                    | Action button URL (HTTPS only)                     |
@@ -59,30 +60,16 @@ deprecated Office 365 Connectors.
 ```yaml
 - name: Notify Teams on failure
   if: failure()
-  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1.0.2
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: '❌ Build Failed'
     message: 'Pipeline failed on `${{ github.ref_name }}`.'
     payload: ${{ toJson(job) }}
     timezone: 'America/Los_Angeles'
-    color: '#D13438'
+    type: 'fail'
     button-text: 'View Logs'
     button-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-```
-
-When `payload: ${{ toJson(job) }}` is used, the Details section is generated in
-this format instead of showing the sparse GitHub job JSON:
-
-```text
-Changelog:
-SPMS-169 fixed the educator filter in timeslots page
-Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator
-SPMS-169 fixed the educator filter in timeslots page
-Merge pull request #57 from ets/staging
-Release 2.3 SPMS-169 fix
-Success!
-05/28/2026 17:19:15
 ```
 
 ### Always notify with status
@@ -90,7 +77,7 @@ Success!
 ```yaml
 - name: Notify Teams
   if: always()
-  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1
+  uses: uclahs-edtech/microsoft-teams-workflows-webhook-notification@v1.0.2
   with:
     webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
     title: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}

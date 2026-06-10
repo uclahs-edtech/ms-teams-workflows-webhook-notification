@@ -1,0 +1,25 @@
+{
+  "inputs": {
+    "card-type": "adaptive"
+  },
+  "commits": [
+    {
+      "message": "Add sample deployment notification"
+    },
+    {
+      "message": "Merge pull request #12 from example/feature/sample-notification"
+    },
+    {
+      "message": "Improve sample changelog formatting"
+    },
+    {
+      "message": "Merge pull request #13 from example/staging"
+    },
+    {
+      "message": "Release sample notification update"
+    }
+  ],
+  "head_commit": {
+    "message": "Release sample notification update"
+  }
+}

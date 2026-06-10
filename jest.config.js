@@ -11,7 +11,7 @@ module.exports = {
 		'!src/**/*.test.js',
 	],
 
-	// ✅ coverageThresholds → coverageThreshold (s 제거)
+	// Jest expects the singular coverageThreshold key.
 	coverageThreshold: {
 		global: {
 			branches:   80,

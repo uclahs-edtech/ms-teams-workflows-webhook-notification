@@ -44515,6 +44515,32 @@ const MAX_PAYLOAD_LENGTH = 6000;
 const MAX_RESPONSE_BODY_LENGTH = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_TIMEZONE = 'America/Los_Angeles';
+const NOTIFICATION_TYPES = {
+	info: {
+		label:          'INFO',
+		adaptiveColor:  'Accent',
+		containerStyle: 'accent',
+		themeColor:     '0078D4',
+	},
+	success: {
+		label:          'SUCCESS',
+		adaptiveColor:  'Good',
+		containerStyle: 'good',
+		themeColor:     '107C10',
+	},
+	warning: {
+		label:          'WARNING',
+		adaptiveColor:  'Warning',
+		containerStyle: 'warning',
+		themeColor:     'FFB900',
+	},
+	fail: {
+		label:          'FAIL',
+		adaptiveColor:  'Attention',
+		containerStyle: 'attention',
+		themeColor:     'D13438',
+	},
+};
 
 // Only allow Microsoft-owned domains for the webhook URL (SSRF prevention).
 // Power Automate webhook URLs are always under these domains.
@@ -44639,21 +44665,31 @@ function validateButtonUrl(rawUrl) {
 	return parsed.href;
 }
 
-/**
- * Validates the hex color string.
- * Falls back to the default blue if the value is invalid.
- *
- * @param {string} value - Raw color string (e.g. "#0078D4").
- * @returns {string} Valid hex color string.
- */
-function validateColor(value) {
-	const DEFAULT_COLOR = '#0078D4';
-	const cleaned = value.trim();
-	if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(cleaned)) {
-		return cleaned;
+function validateNotificationType(value) {
+	const normalized = value.trim().toLowerCase();
+
+	if (Object.prototype.hasOwnProperty.call(NOTIFICATION_TYPES, normalized)) {
+		return normalized;
 	}
-	core.warning(`Invalid color value "${cleaned}". Falling back to ${DEFAULT_COLOR}.`);
-	return DEFAULT_COLOR;
+
+	core.warning(
+		`Invalid type "${value}". Falling back to "info". Valid values are: info, warning, fail, success.`
+	);
+	return 'info';
+}
+
+function getNotificationTypeConfig(notificationType) {
+	switch (notificationType) {
+		case 'success':
+			return NOTIFICATION_TYPES.success;
+		case 'warning':
+			return NOTIFICATION_TYPES.warning;
+		case 'fail':
+			return NOTIFICATION_TYPES.fail;
+		case 'info':
+		default:
+			return NOTIFICATION_TYPES.info;
+	}
 }
 
 /**
@@ -44808,6 +44844,32 @@ function buildGeneratedDetailPayload(rawPayload, timeZone) {
 	return generated;
 }
 
+function buildDetailFacts(detailPayload) {
+	if (!detailPayload) return [];
+
+	const lines = detailPayload.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+	if (lines.length === 2 && lines[0].endsWith('!')) {
+		return [
+			{ title: 'Status', value: lines[0] },
+			{ title: 'Time',   value: lines[1] },
+		];
+	}
+
+	if (lines[0] !== 'Changelog:' || lines.length < 3) {
+		return [{ title: 'Details', value: detailPayload }];
+	}
+
+	const time = lines.at(-1);
+	const status = lines.at(-2);
+	const changelog = lines.slice(1, -2).join('\n');
+
+	return [
+		{ title: 'Change log', value: changelog || 'N/A' },
+		{ title: 'Status',     value: status },
+		{ title: 'Time',       value: time },
+	];
+}
+
 // ─── Payload Builders ─────────────────────────────────────────────────────────
 
 /**
@@ -44846,20 +44908,47 @@ function buildGitHubFacts() {
  * @param {string}  params.title
  * @param {string}  params.message
  * @param {string}  params.detailPayload
+ * @param {string}  params.notificationType
  * @param {boolean} params.includeContext
  * @param {string}  params.buttonText
  * @param {string}  params.buttonUrl
  * @returns {object} Webhook request payload.
  */
-function buildAdaptiveCardPayload({ title, message, detailPayload, includeContext, buttonText, buttonUrl }) {
+function buildAdaptiveCardPayload({
+	title,
+	message,
+	detailPayload,
+	notificationType,
+	includeContext,
+	buttonText,
+	buttonUrl,
+}) {
+	const typeConfig = getNotificationTypeConfig(notificationType);
 	const body = [
 		{
-			type:   'TextBlock',
-			text:   title,
-			weight: 'Bolder',
-			size:   'Medium',
-			color:  'Accent',
-			wrap:   true,
+			type:    'Container',
+			style:   typeConfig.containerStyle,
+			bleed:   true,
+			spacing: 'None',
+			items:   [
+				{
+					type:   'TextBlock',
+					text:   typeConfig.label,
+					weight: 'Bolder',
+					size:   'Small',
+					color:  typeConfig.adaptiveColor,
+					wrap:   true,
+				},
+				{
+					type:    'TextBlock',
+					text:    title,
+					weight:  'Bolder',
+					size:    'Large',
+					color:   typeConfig.adaptiveColor,
+					wrap:    true,
+					spacing: 'Small',
+				},
+			],
 		},
 		{
 			type:    'TextBlock',
@@ -44880,11 +44969,9 @@ function buildAdaptiveCardPayload({ title, message, detailPayload, includeContex
 				wrap:      true,
 			},
 			{
-				type:     'TextBlock',
-				text:     detailPayload,
-				fontType: 'Monospace',
-				wrap:     true,
-				spacing:  'Small',
+				type:    'FactSet',
+				facts:   buildDetailFacts(detailPayload),
+				spacing: 'Small',
 			}
 		);
 	}
@@ -44941,13 +45028,22 @@ function buildAdaptiveCardPayload({ title, message, detailPayload, includeContex
  * @param {string}  params.title
  * @param {string}  params.message
  * @param {string}  params.detailPayload
- * @param {string}  params.color
+ * @param {string}  params.notificationType
  * @param {boolean} params.includeContext
  * @param {string}  params.buttonText
  * @param {string}  params.buttonUrl
  * @returns {object} Webhook request payload.
  */
-function buildMessageCardPayload({ title, message, detailPayload, color, includeContext, buttonText, buttonUrl }) {
+function buildMessageCardPayload({
+	title,
+	message,
+	detailPayload,
+	notificationType,
+	includeContext,
+	buttonText,
+	buttonUrl,
+}) {
+	const typeConfig = getNotificationTypeConfig(notificationType);
 	const activityText = detailPayload
 		? `${message}\n\n**Details**\n\n\`\`\`json\n${detailPayload}\n\`\`\``
 		: message;
@@ -44955,11 +45051,11 @@ function buildMessageCardPayload({ title, message, detailPayload, color, include
 	const payload = {
 		'@type':    'MessageCard',
 		'@context': 'http://schema.org/extensions',
-		themeColor: color.replace('#', ''),
+		themeColor: typeConfig.themeColor,
 		summary:    title,
 		sections: [
 			{
-				activityTitle: title,
+				activityTitle: `[${typeConfig.label}] ${title}`,
 				activityText,
 				facts:         includeContext ? buildGitHubFacts() : [],
 				markdown:      true,
@@ -45038,7 +45134,7 @@ async function run() {
 		const rawTitle      = core.getInput('title');
 		const rawMessage    = core.getInput('message', { required: true });
 		const rawPayload    = core.getInput('payload');
-		const rawColor      = core.getInput('color');
+		const rawType       = core.getInput('type');
 		const rawButtonText = core.getInput('button-text');
 		const rawButtonUrl  = core.getInput('button-url');
 		const cardType      = core.getInput('card-type').toLowerCase().trim();
@@ -45057,7 +45153,7 @@ async function run() {
 		const message    = sanitizeText(rawMessage,    'message',     MAX_MESSAGE_LENGTH);
 		const detailPayload = buildGeneratedDetailPayload(rawPayload, timezone);
 		const buttonText = sanitizeText(rawButtonText, 'button-text', MAX_BUTTON_LENGTH);
-		const color      = validateColor(rawColor);
+		const notificationType = validateNotificationType(rawType);
 
 		// --- Validate button URL (if provided) ---
 		const buttonUrl = validateButtonUrl(rawButtonUrl);
@@ -45072,7 +45168,7 @@ async function run() {
 			title,
 			message,
 			detailPayload,
-			color,
+			notificationType,
 			includeContext: includeCtx,
 			buttonText,
 			buttonUrl,
@@ -45114,10 +45210,12 @@ module.exports = {
 	validateWebhookUrl,
 	sanitizeText,
 	validateButtonUrl,
-	validateColor,
+	validateNotificationType,
+	getNotificationTypeConfig,
 	formatDetailPayload,
 	buildGeneratedDetailPayload,
 	buildChangelogLines,
+	buildDetailFacts,
 	formatStatusLine,
 	formatTimestamp,
 	buildAdaptiveCardPayload,

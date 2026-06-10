@@ -26,10 +26,12 @@ const {
 	validateWebhookUrl,
 	sanitizeText,
 	validateButtonUrl,
-	validateColor,
+	validateNotificationType,
+	getNotificationTypeConfig,
 	formatDetailPayload,
 	buildGeneratedDetailPayload,
 	buildChangelogLines,
+	buildDetailFacts,
 	formatStatusLine,
 	formatTimestamp,
 	buildAdaptiveCardPayload,
@@ -174,28 +176,33 @@ describe('validateButtonUrl', () => {
 	});
 });
 
-// ─── validateColor ────────────────────────────────────────────────────────────
+// ─── validateNotificationType ────────────────────────────────────────────────
 
-describe('validateColor', () => {
+describe('validateNotificationType', () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	it('accepts a valid 6-digit hex color', () => {
-		expect(validateColor('#0078D4')).toBe('#0078D4');
+	it('accepts supported notification types', () => {
+		expect(validateNotificationType('info')).toBe('info');
+		expect(validateNotificationType('warning')).toBe('warning');
+		expect(validateNotificationType('fail')).toBe('fail');
+		expect(validateNotificationType('success')).toBe('success');
 	});
 
-	it('accepts a valid 3-digit hex color', () => {
-		expect(validateColor('#fff')).toBe('#fff');
+	it('normalizes type casing and whitespace', () => {
+		expect(validateNotificationType(' Success ')).toBe('success');
 	});
 
-	it('falls back to default color for invalid input and emits a warning', () => {
-		const result = validateColor('not-a-color');
-		expect(result).toBe('#0078D4');
-		expect(core.warning).toHaveBeenCalled();
+	it('falls back to info for invalid types and emits a warning', () => {
+		const result = validateNotificationType('critical');
+		expect(result).toBe('info');
+		expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Invalid type'));
 	});
 
-	it('falls back to default color when hash is missing', () => {
-		const result = validateColor('0078D4');
-		expect(result).toBe('#0078D4');
+	it('returns visible config for each notification type', () => {
+		expect(getNotificationTypeConfig('info').adaptiveColor).toBe('Accent');
+		expect(getNotificationTypeConfig('warning').adaptiveColor).toBe('Warning');
+		expect(getNotificationTypeConfig('fail').adaptiveColor).toBe('Attention');
+		expect(getNotificationTypeConfig('success').adaptiveColor).toBe('Good');
 	});
 });
 
@@ -240,10 +247,10 @@ describe('generated detail payload', () => {
 		jest.clearAllMocks();
 		github.context.payload = {
 			commits: [
-				{ message: 'SPMS-169 fixed the educator filter in timeslots page\n\nBody' },
+				{ message: 'Add sample deployment notification\n\nBody' },
 				{
 					message:
-						'Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator',
+						'Merge pull request #12 from example/feature/sample-notification',
 				},
 			],
 		};
@@ -286,9 +293,9 @@ describe('generated detail payload', () => {
 		);
 
 		expect(result).toContain('Changelog:');
-		expect(result).toContain('SPMS-169 fixed the educator filter in timeslots page');
+		expect(result).toContain('Add sample deployment notification');
 		expect(result).toContain(
-			'Merge pull request #56 from ets/feature/SPMS-169-as-an-admin-i-want-to-filter-timeslots-by-educator'
+			'Merge pull request #12 from example/feature/sample-notification'
 		);
 		expect(result).toContain('Success!');
 		expect(result).toContain('05/28/2026 17:19:15');
@@ -298,11 +305,11 @@ describe('generated detail payload', () => {
 	it('uses fallback event titles when commits are unavailable', () => {
 		github.context.payload = {
 			head_commit: {
-				message: 'Release 2.3 SPMS-169 fix\n\nFull release notes',
+				message: 'Release sample notification update\n\nFull release notes',
 			},
 		};
 
-		expect(buildChangelogLines()).toEqual(['Release 2.3 SPMS-169 fix']);
+		expect(buildChangelogLines()).toEqual(['Release sample notification update']);
 	});
 
 	it('returns no changelog lines when no event messages are available', () => {
@@ -326,21 +333,21 @@ describe('generated detail payload', () => {
 	it('uses pull request titles when commit and head commit messages are unavailable', () => {
 		github.context.payload = {
 			pull_request: {
-				title: 'Merge pull request #57 from ets/staging',
+				title: 'Merge pull request #13 from example/staging',
 			},
 		};
 
-		expect(buildChangelogLines()).toEqual(['Merge pull request #57 from ets/staging']);
+		expect(buildChangelogLines()).toEqual(['Merge pull request #13 from example/staging']);
 	});
 
 	it('uses release names and tags as changelog fallbacks', () => {
 		github.context.payload = {
 			release: {
-				name: 'Release 2.3 SPMS-169 fix',
+				name: 'Release sample notification update',
 				tag_name: 'v2.3.0',
 			},
 		};
-		expect(buildChangelogLines()).toEqual(['Release 2.3 SPMS-169 fix']);
+		expect(buildChangelogLines()).toEqual(['Release sample notification update']);
 
 		github.context.payload = {
 			release: {
@@ -395,12 +402,13 @@ describe('generated detail payload', () => {
 
 describe('buildAdaptiveCardPayload', () => {
 	const baseParams = {
-		title:          'Test Title',
-		message:        'Test message',
-		detailPayload:  '',
-		includeContext: false,
-		buttonText:     '',
-		buttonUrl:      '',
+		title:            'Test Title',
+		message:          'Test message',
+		detailPayload:    '',
+		notificationType: 'info',
+		includeContext:   false,
+		buttonText:       '',
+		buttonUrl:        '',
 	};
 
 	it('returns a valid Workflow webhook envelope', () => {
@@ -415,8 +423,21 @@ describe('buildAdaptiveCardPayload', () => {
 	it('includes title and message in card body', () => {
 		const payload = buildAdaptiveCardPayload(baseParams);
 		const body = payload.attachments[0].content.body;
-		expect(body[0].text).toBe('Test Title');
+		expect(body[0].type).toBe('Container');
+		expect(body[0].items[0].text).toBe('INFO');
+		expect(body[0].items[1].text).toBe('Test Title');
 		expect(body[1].text).toBe('Test message');
+	});
+
+	it('applies visible type styling to adaptive cards', () => {
+		const payload = buildAdaptiveCardPayload({
+			...baseParams,
+			notificationType: 'fail',
+		});
+		const header = payload.attachments[0].content.body[0];
+		expect(header.style).toBe('attention');
+		expect(header.items[0].text).toBe('FAIL');
+		expect(header.items[1].color).toBe('Attention');
 	});
 
 	it('includes FactSet when includeContext is true', () => {
@@ -454,12 +475,38 @@ describe('buildAdaptiveCardPayload', () => {
 	it('includes detail payload when provided', () => {
 		const payload = buildAdaptiveCardPayload({
 			...baseParams,
-			detailPayload: '{\n  "status": "success"\n}',
+			detailPayload: 'Changelog:\nAdd sample deployment notification\nSuccess!\n05/28/2026 17:19:15',
 		});
 		const body = payload.attachments[0].content.body;
-		const detail = body.find((b) => b.fontType === 'Monospace');
+		const detail = body.find((b) =>
+			b.type === 'FactSet' && b.facts.some((fact) => fact.title === 'Change log')
+		);
 		expect(detail).toBeDefined();
-		expect(detail.text).toContain('"status": "success"');
+		expect(detail.facts).toEqual([
+			{ title: 'Change log', value: 'Add sample deployment notification' },
+			{ title: 'Status',     value: 'Success!' },
+			{ title: 'Time',       value: '05/28/2026 17:19:15' },
+		]);
+	});
+});
+
+describe('buildDetailFacts', () => {
+	it('returns a generic details fact for regular payloads', () => {
+		expect(buildDetailFacts('plain detail text')).toEqual([
+			{ title: 'Details', value: 'plain detail text' },
+		]);
+	});
+
+	it('returns no facts when there is no detail payload', () => {
+		expect(buildDetailFacts('')).toEqual([]);
+	});
+
+	it('uses N/A when a changelog detail has no changelog entries', () => {
+		expect(buildDetailFacts('Changelog:\nSuccess!\n05/28/2026 17:19:15')).toEqual([
+			{ title: 'Change log', value: 'N/A' },
+			{ title: 'Status',     value: 'Success!' },
+			{ title: 'Time',       value: '05/28/2026 17:19:15' },
+		]);
 	});
 });
 
@@ -467,13 +514,13 @@ describe('buildAdaptiveCardPayload', () => {
 
 describe('buildMessageCardPayload', () => {
 	const baseParams = {
-		title:          'Test Title',
-		message:        'Test message',
-		detailPayload:  '',
-		color:          '#FF0000',
-		includeContext: false,
-		buttonText:     '',
-		buttonUrl:      '',
+		title:            'Test Title',
+		message:          'Test message',
+		detailPayload:    '',
+		notificationType: 'fail',
+		includeContext:   false,
+		buttonText:       '',
+		buttonUrl:        '',
 	};
 
 	it('returns a valid MessageCard object', () => {
@@ -484,7 +531,7 @@ describe('buildMessageCardPayload', () => {
 
 	it('sets themeColor without the leading hash', () => {
 		const payload = buildMessageCardPayload(baseParams);
-		expect(payload.themeColor).toBe('FF0000');
+		expect(payload.themeColor).toBe('D13438');
 	});
 
 	it('includes potentialAction when button fields are provided', () => {
@@ -504,13 +551,13 @@ describe('buildMessageCardPayload', () => {
 
 	it('includes facts when includeContext is true', () => {
 		const payload = buildMessageCardPayload({
-			title:          'Test Title',
-			message:        'Test message',
-			detailPayload:  '',
-			color:          '#FF0000',
-			includeContext: true,   // ← 267번 브랜치 커버
-			buttonText:     '',
-			buttonUrl:      '',
+			title:            'Test Title',
+			message:          'Test message',
+			detailPayload:    '',
+			notificationType: 'info',
+			includeContext:   true,
+			buttonText:       '',
+			buttonUrl:        '',
 		});
 		expect(payload.sections[0].facts.length).toBeGreaterThan(0);
 	});
@@ -611,14 +658,14 @@ describe('postJson', () => {
 				}),
 				write:   jest.fn(),
 				end:     jest.fn(),
-				destroy: mockDestroy,   // ← destroy 호출 여부 확인
+				destroy: mockDestroy,
 			};
 			return req;
 		});
 
 		const parsedUrl = new URL('https://prod-00.westus.logic.azure.com/workflows/abc');
 		await expect(postJson(parsedUrl, {})).rejects.toThrow('timed out');
-		expect(mockDestroy).toHaveBeenCalled();   // 319번 라인 커버
+		expect(mockDestroy).toHaveBeenCalled();
 	});
 });
 
@@ -631,7 +678,7 @@ describe('run', () => {
 		'title':                  'Test Title',
 		'message':                'Test message',
 		'payload':                '',
-		'color':                  '#0078D4',
+		'type':                   'info',
 		'include-github-context': 'false',
 		'button-text':            '',
 		'button-url':             '',
@@ -783,8 +830,10 @@ describe('run', () => {
 
 		const sentPayload = JSON.parse(requestBody);
 		const body = sentPayload.attachments[0].content.body;
-		const detail = body.find((b) => b.fontType === 'Monospace');
-		expect(detail.text).toContain('"status": "success"');
+		const detail = body.find((b) =>
+			b.type === 'FactSet' && b.facts.some((fact) => fact.title === 'Details')
+		);
+		expect(detail.facts[0].value).toContain('"status": "success"');
 	});
 
 	it('uses the default timezone when timezone input is blank', async () => {
@@ -818,8 +867,13 @@ describe('run', () => {
 
 		const sentPayload = JSON.parse(requestBody);
 		const body = sentPayload.attachments[0].content.body;
-		const detail = body.find((b) => b.fontType === 'Monospace');
-		expect(detail.text).toContain('05/28/2026 17:19:15');
+		const detail = body.find((b) =>
+			b.type === 'FactSet' && b.facts.some((fact) => fact.title === 'Time')
+		);
+		expect(detail.facts).toContainEqual({
+			title: 'Time',
+			value: '05/28/2026 17:19:15',
+		});
 		jest.useRealTimers();
 	});
 });
@@ -839,7 +893,7 @@ describe('buildGitHubFacts', () => {
 		// Override github mock to return null values
 		jest.mock('@actions/github', () => ({
 			context: {
-				repo:      { owner: null, repo: undefined },  // ← 154번 브랜치 커버
+				repo:      { owner: null, repo: undefined },
 				ref:       null,
 				actor:     undefined,
 				workflow:  null,

@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.2] - 2026-06-09
+
+### Changed
+- Replace free-form `color` input with `type` (`info`, `warning`, `fail`, `success`) for consistent notification styling.
+- Make Adaptive Card notification type visually noticeable with a typed header band and status label.
+- Render generated job details as structured `Change log`, `Status`, and `Time` facts instead of a monospace text block.
+
 ## [1.0.1] - 2026-06-09
 
 ### Changed

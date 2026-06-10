@@ -45,7 +45,24 @@ jobs:
                   button-text: 'Open GitHub'
                   button-url: 'https://github.com'
 
-    # ── Test 3: Failure scenario ─────────────────────────────────────────────────
+    # ── Test 3: Changelog payload formatting ─────────────────────────────────────
+    test-changelog-payload:
+        name: Changelog Payload Notification
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Send changelog payload notification
+              uses: ./
+              with:
+                  webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+                  title: 'Test - Changelog Payload'
+                  message: 'This should show changelog details instead of sparse job JSON.'
+                  payload: ${{ toJson(job) }}
+                  type: 'success'
+                  timezone: 'America/Los_Angeles'
+
+    # ── Test 4: Failure scenario ─────────────────────────────────────────────────
     test-on-failure:
         name: Failure Notification
         runs-on: ubuntu-latest
@@ -62,9 +79,9 @@ jobs:
                   webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
                   title: '❌ Test — Failure Scenario'
                   message: 'This message appears only when the previous step fails.'
-                  color: '#D13438'
+                  type: 'fail'
 
-    # ── Test 4: Dry-run (no actual send) ─────────────────────────────────────────
+    # ── Test 5: Dry-run (no actual send) ─────────────────────────────────────────
     test-dry-run:
         name: Dry Run
         runs-on: ubuntu-latest
@@ -79,7 +96,7 @@ jobs:
                   message: 'This should NOT appear in Teams.'
                   dry-run: 'true'
 
-    # ── Test 5: Security — invalid URL must be rejected ──────────────────────────
+    # ── Test 6: Security — invalid URL must be rejected ──────────────────────────
     test-invalid-url:
         name: Invalid URL Rejection
         runs-on: ubuntu-latest
